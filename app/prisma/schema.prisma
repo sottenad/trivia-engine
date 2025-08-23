@@ -1,0 +1,90 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Category {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  clues     Clue[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Clue {
+  id              Int      @id @default(autoincrement())
+  gameId          String
+  value           String
+  question        String
+  answer          String
+  categoryId      Int
+  category        Category @relation(fields: [categoryId], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  triviaQuestions TriviaQuestion[]
+
+  @@index([gameId])
+}
+
+model TriviaQuestion {
+  id               Int      @id @default(autoincrement())
+  clueId           Int
+  clue             Clue     @relation(fields: [clueId], references: [id])
+  rephrased        String
+  correctAnswer    String
+  wrongAnswer1     String
+  wrongAnswer2     String
+  wrongAnswer3     String
+  createdAt        DateTime @default(now())
+  model            String
+
+  @@index([clueId])
+}
+
+model User {
+  id              Int       @id @default(autoincrement())
+  email           String    @unique
+  name            String
+  password        String
+  apiKeys         ApiKey[]
+  isAdmin         Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model ApiKey {
+  id              Int       @id @default(autoincrement())
+  key             String    @unique
+  name            String
+  userId          Int
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isActive        Boolean   @default(true)
+  rateLimits      RateLimit[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  lastUsedAt      DateTime?
+
+  @@index([userId])
+}
+
+model RateLimit {
+  id        Int      @id @default(autoincrement())
+  apiKeyId  Int
+  apiKey    ApiKey   @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  requests  Int      @default(0)
+  window    String   // Window in seconds, using String type for compatibility
+  limit     Int
+  resetAt   DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([apiKeyId])
+  @@unique([apiKeyId, window])
+} 
