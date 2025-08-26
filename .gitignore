@@ -33,6 +33,26 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+!.env.sample
+
+# Environment files - NEVER commit these
+app/.env
+app/.env.local
+app/.env.production
+marketing/.env
+marketing/.env.local
+marketing/.env.production
+mcp/.env
+mcp/.env.local
+
+# Generated credentials files
+credentials.*.txt
+*credentials*.txt
+
+# Backup files
+*.backup
+*.backup.*
 
 # vercel
 .vercel
