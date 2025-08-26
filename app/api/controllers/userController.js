@@ -1,6 +1,6 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
-const { generateToken, hashPassword, comparePassword } = require('../utils/authUtils');
+const { prisma } = require('../../config/database');
+const { generateToken, hashPassword, comparePassword, validatePasswordComplexity } = require('../utils/authUtils');
+const { ApiError } = require('../middleware/errorMiddleware');
 const { validationResult } = require('express-validator');
 const asyncHandler = require('../utils/asyncHandler');
 
@@ -9,57 +9,55 @@ const asyncHandler = require('../utils/asyncHandler');
  * @route   POST /api/users
  * @access  Public
  */
-const registerUser = asyncHandler(async (req, res) => {
-  try {
-    // Check for validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, errors: errors.array() });
-    }
-
-    const { name, email, password } = req.body;
-
-    // Check if user already exists
-    const userExists = await prisma.user.findUnique({
-      where: { email }
-    });
-
-    if (userExists) {
-      return res.status(400).json({ success: false, error: 'User already exists' });
-    }
-
-    // Create user
-    const user = await prisma.user.create({
-      data: {
-        name,
-        email,
-        password: await hashPassword(password),
-        isAdmin: false
-      }
-    });
-
-    if (user) {
-      // Generate token
-      const token = generateToken(user.id);
-      
-      res.status(201).json({
-        success: true,
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          isAdmin: user.isAdmin,
-          token
-        }
-      });
-    } else {
-      res.status(400);
-      throw new Error('Invalid user data');
-    }
-  } catch (error) {
-    console.error('Register user error:', error);
-    res.status(500).json({ success: false, error: 'Registration failed. Please try again.' });
+const registerUser = asyncHandler(async (req, res, next) => {
+  // Check for validation errors
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    throw new ApiError(400, 'Validation error', errors.array());
   }
+
+  const { name, email, password } = req.body;
+
+  // Validate password complexity
+  const passwordValidation = validatePasswordComplexity(password);
+  if (!passwordValidation.isValid) {
+    throw new ApiError(400, passwordValidation.errors.join(', '));
+  }
+
+  // Check if user already exists
+  const userExists = await prisma.user.findUnique({
+    where: { email }
+  });
+
+  if (userExists) {
+    throw new ApiError(409, 'User already exists');
+  }
+
+  // Create user
+  const user = await prisma.user.create({
+    data: {
+      name,
+      email,
+      password: await hashPassword(password),
+      isAdmin: false
+    }
+  });
+
+  // Generate token
+  const token = generateToken(user.id);
+  
+  res.status(201).json({
+    success: true,
+    data: {
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        isAdmin: user.isAdmin
+      },
+      token
+    }
+  });
 });
 
 /**
@@ -72,7 +70,7 @@ const loginUser = async (req, res, next) => {
     // Check for validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, errors: errors.array() });
+      throw new ApiError(400, 'Validation error', errors.array());
     }
 
     const { email, password } = req.body;
@@ -86,17 +84,18 @@ const loginUser = async (req, res, next) => {
     if (user && (await comparePassword(password, user.password))) {
       res.json({
         success: true,
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          isAdmin: user.isAdmin,
+        data: {
+          user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            isAdmin: user.isAdmin
+          },
           token: generateToken(user.id)
         }
       });
     } else {
-      res.status(401);
-      throw new Error('Invalid email or password');
+      throw new ApiError(401, 'Invalid email or password');
     }
   } catch (error) {
     next(error);
@@ -116,16 +115,17 @@ const getUserProfile = async (req, res, next) => {
     if (user) {
       res.json({
         success: true,
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          isAdmin: user.isAdmin
+        data: {
+          user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            isAdmin: user.isAdmin
+          }
         }
       });
     } else {
-      res.status(404);
-      throw new Error('User not found');
+      throw new ApiError(404, 'User not found');
     }
   } catch (error) {
     next(error);
@@ -142,7 +142,7 @@ const updateUserProfile = async (req, res, next) => {
     // Check for validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, errors: errors.array() });
+      throw new ApiError(400, 'Validation error', errors.array());
     }
 
     // Get user from database
@@ -151,8 +151,7 @@ const updateUserProfile = async (req, res, next) => {
     });
 
     if (!user) {
-      res.status(404);
-      throw new Error('User not found');
+      throw new ApiError(404, 'User not found');
     }
 
     // Update user fields
@@ -162,7 +161,14 @@ const updateUserProfile = async (req, res, next) => {
     const updateData = {};
     if (name) updateData.name = name;
     if (email) updateData.email = email;
-    if (password) updateData.password = await hashPassword(password);
+    if (password) {
+      // Validate password complexity
+      const passwordValidation = validatePasswordComplexity(password);
+      if (!passwordValidation.isValid) {
+        throw new ApiError(400, passwordValidation.errors.join(', '));
+      }
+      updateData.password = await hashPassword(password);
+    }
 
     // Update user
     const updatedUser = await prisma.user.update({
@@ -172,11 +178,13 @@ const updateUserProfile = async (req, res, next) => {
 
     res.json({
       success: true,
-      user: {
-        id: updatedUser.id,
-        name: updatedUser.name,
-        email: updatedUser.email,
-        isAdmin: updatedUser.isAdmin,
+      data: {
+        user: {
+          id: updatedUser.id,
+          name: updatedUser.name,
+          email: updatedUser.email,
+          isAdmin: updatedUser.isAdmin
+        },
         token: generateToken(updatedUser.id)
       }
     });
@@ -204,8 +212,10 @@ const getUsers = async (req, res, next) => {
 
     res.json({
       success: true,
-      count: users.length,
-      users
+      data: {
+        count: users.length,
+        users
+      }
     });
   } catch (error) {
     next(error);
@@ -224,21 +234,19 @@ const deleteUser = async (req, res, next) => {
     });
 
     if (!user) {
-      res.status(404);
-      throw new Error('User not found');
+      throw new ApiError(404, 'User not found');
     }
 
     // Don't allow admin to delete themselves
     if (user.id === req.user.id) {
-      res.status(400);
-      throw new Error('Cannot delete your own account');
+      throw new ApiError(400, 'Cannot delete your own account');
     }
 
     await prisma.user.delete({
       where: { id: parseInt(req.params.id) }
     });
 
-    res.json({ success: true, message: 'User removed' });
+    res.json({ success: true, data: { message: 'User removed' } });
   } catch (error) {
     next(error);
   }

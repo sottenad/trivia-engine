@@ -1,5 +1,5 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const { prisma } = require('../../config/database');
+const config = require('../../config');
 
 /**
  * Custom rate limiting middleware for API keys
@@ -16,8 +16,8 @@ const apiKeyRateLimit = async (req, res, next) => {
     // If no rate limits are set for this key, allow the request
     if (!apiKey.rateLimits || apiKey.rateLimits.length === 0) {
       // Use default rate limit if no custom limits
-      const defaultLimit = 100; // 100 requests
-      const defaultWindow = "3600"; // 1 hour in seconds as string
+      const defaultLimit = config.apiKey.defaultRateLimit.requests;
+      const defaultWindow = config.apiKey.defaultRateLimit.windowSeconds;
 
       // Create a default rate limit for this API key
       await prisma.rateLimit.create({
@@ -26,7 +26,7 @@ const apiKeyRateLimit = async (req, res, next) => {
           limit: defaultLimit,
           window: defaultWindow,
           requests: 1,
-          resetAt: new Date(now.getTime() + parseInt(defaultWindow) * 1000)
+          resetAt: new Date(now.getTime() + defaultWindow * 1000)
         }
       });
       
@@ -41,7 +41,7 @@ const apiKeyRateLimit = async (req, res, next) => {
           where: { id: rateLimit.id },
           data: {
             requests: 1,
-            resetAt: new Date(now.getTime() + parseInt(rateLimit.window) * 1000)
+            resetAt: new Date(now.getTime() + rateLimit.window * 1000)
           }
         });
       } else {

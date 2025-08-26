@@ -1,5 +1,5 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const { prisma } = require('../../config/database');
+const config = require('../../config');
 const { generateApiKey } = require('../utils/authUtils');
 const { validationResult } = require('express-validator');
 
@@ -36,9 +36,9 @@ const createApiKey = async (req, res, next) => {
     await prisma.rateLimit.create({
       data: {
         apiKeyId: apiKey.id,
-        // Default: 100 requests per hour
-        limit: 100,
-        window: "3600", // 1 hour in seconds as string
+        // Default rate limit from config
+        limit: config.apiKey.defaultRateLimit.requests,
+        window: config.apiKey.defaultRateLimit.windowSeconds,
         requests: 0,
         resetAt: new Date(Date.now() + 3600 * 1000)
       }
@@ -288,7 +288,7 @@ const updateRateLimit = async (req, res, next) => {
         where: { id: rateLimit.id },
         data: {
           limit,
-          window: window.toString(), // Convert to string
+          window: window,
           // Reset the counter when updating limit
           requests: 0,
           resetAt: new Date(Date.now() + window * 1000)
@@ -300,7 +300,7 @@ const updateRateLimit = async (req, res, next) => {
         data: {
           apiKeyId: keyId,
           limit,
-          window: window.toString(), // Convert to string
+          window: window,
           requests: 0,
           resetAt: new Date(Date.now() + window * 1000)
         }

@@ -1,11 +1,7 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
-const { v4: uuidv4 } = require('uuid');
-
-// JWT Secret
-const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key';
-// JWT expiration (default: 30 days)
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '30d';
+const crypto = require('crypto');
+const config = require('../../config');
 
 /**
  * Generate a JWT token
@@ -13,8 +9,19 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '30d';
  * @returns {string} JWT token
  */
 const generateToken = (id) => {
-  return jwt.sign({ id }, JWT_SECRET, {
-    expiresIn: JWT_EXPIRES_IN
+  return jwt.sign({ id }, config.jwt.secret, {
+    expiresIn: config.jwt.expiresIn
+  });
+};
+
+/**
+ * Generate a refresh token
+ * @param {number} id - User ID
+ * @returns {string} Refresh token
+ */
+const generateRefreshToken = (id) => {
+  return jwt.sign({ id, type: 'refresh' }, config.jwt.secret, {
+    expiresIn: config.jwt.refreshExpiresIn
   });
 };
 
@@ -24,7 +31,7 @@ const generateToken = (id) => {
  * @returns {Promise<string>} Hashed password
  */
 const hashPassword = async (password) => {
-  const salt = await bcrypt.genSalt(10);
+  const salt = await bcrypt.genSalt(config.security.bcryptRounds);
   return await bcrypt.hash(password, salt);
 };
 
@@ -39,16 +46,57 @@ const comparePassword = async (enteredPassword, hashedPassword) => {
 };
 
 /**
- * Generate a unique API key
+ * Generate a secure API key
  * @returns {string} API key
  */
 const generateApiKey = () => {
-  return uuidv4();
+  // Generate a secure random API key using crypto
+  const buffer = crypto.randomBytes(config.apiKey.saltRounds);
+  const apiKey = buffer.toString('base64url');
+  
+  // Add a prefix to make it identifiable
+  return `sk_${apiKey}`;
+};
+
+/**
+ * Validate password complexity
+ * @param {string} password - Password to validate
+ * @returns {object} Validation result with isValid and errors
+ */
+const validatePasswordComplexity = (password) => {
+  const errors = [];
+  
+  if (password.length < 8) {
+    errors.push('Password must be at least 8 characters long');
+  }
+  
+  if (!/[A-Z]/.test(password)) {
+    errors.push('Password must contain at least one uppercase letter');
+  }
+  
+  if (!/[a-z]/.test(password)) {
+    errors.push('Password must contain at least one lowercase letter');
+  }
+  
+  if (!/[0-9]/.test(password)) {
+    errors.push('Password must contain at least one number');
+  }
+  
+  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+    errors.push('Password must contain at least one special character');
+  }
+  
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
 };
 
 module.exports = {
   generateToken,
+  generateRefreshToken,
   hashPassword,
   comparePassword,
-  generateApiKey
+  generateApiKey,
+  validatePasswordComplexity
 }; 

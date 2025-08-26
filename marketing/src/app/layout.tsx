@@ -1,20 +1,53 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
+import type { Metadata } from 'next';
+import localFont from 'next/font/local';
+import './globals.css';
+import Navigation from '@/components/Navigation';
+import Footer from '@/components/Footer';
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+const geistSans = localFont({
+  src: './fonts/GeistVF.woff',
+  variable: '--font-geist-sans',
+  weight: '100 900',
 });
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+const geistMono = localFont({
+  src: './fonts/GeistMonoVF.woff',
+  variable: '--font-geist-mono',
+  weight: '100 900',
 });
 
 export const metadata: Metadata = {
-  title: "Trivia Engine API - 100,000+ Trivia Questions",
-  description: "Access over 100,000 trivia questions through our easy-to-use API",
+  title: 'Trivia Engine - The Ultimate Trivia API',
+  description: 'Access over 100,000 trivia questions with our powerful API. Perfect for game developers, educators, and trivia enthusiasts.',
+  keywords: 'trivia api, quiz api, trivia questions, game development, education api',
+  authors: [{ name: 'Trivia Engine Team' }],
+  openGraph: {
+    title: 'Trivia Engine - The Ultimate Trivia API',
+    description: 'Access over 100,000 trivia questions with our powerful API.',
+    type: 'website',
+    url: 'https://trivia-engine.com',
+    images: [
+      {
+        url: '/og-image.png',
+        width: 1200,
+        height: 630,
+        alt: 'Trivia Engine API',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Trivia Engine - The Ultimate Trivia API',
+    description: 'Access over 100,000 trivia questions with our powerful API.',
+    images: ['/og-image.png'],
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
+  viewport: {
+    width: 'device-width',
+    initialScale: 1,
+  },
 };
 
 export default function RootLayout({
@@ -23,24 +56,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark scroll-smooth">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-900 text-gray-100`}
-      >
-        <header className="sticky top-0 z-50 backdrop-blur-md bg-gray-800/80 border-b border-purple-500/20">
-          <div className="container mx-auto flex justify-between items-center py-4 px-6">
-            <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-blue-500">Trivia Engine</h1>
-           
-          </div>
-        </header>
-        <main>
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
+      <body className="bg-gray-900 text-gray-100 antialiased">
+        <Navigation />
+        <main className="min-h-screen pt-16">
           {children}
         </main>
-        <footer className="bg-gray-800 border-t border-purple-500/20 py-6 px-4">
-          <div className="container mx-auto text-center text-gray-400">
-            <p>© {new Date().getFullYear()} Trivia Engine. All rights reserved.</p>
-          </div>
-        </footer>
+        <Footer />
       </body>
     </html>
   );

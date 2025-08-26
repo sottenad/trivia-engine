@@ -1,0 +1,45 @@
+[Unit]
+Description=Trivia Engine API Service
+Documentation=https://github.com/yourusername/trivia-engine
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=trivia
+Group=trivia
+WorkingDirectory=/home/trivia/trivia-engine/app
+
+# Environment variables
+Environment="NODE_ENV=production"
+Environment="NODE_OPTIONS=--max-old-space-size=1024"
+EnvironmentFile=-/home/trivia/trivia-engine/app/.env
+
+# Process management
+ExecStart=/usr/bin/node api/index.js
+ExecReload=/bin/kill -USR2 $MAINPID
+Restart=always
+RestartSec=10
+KillMode=mixed
+KillSignal=SIGTERM
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/home/trivia/trivia-engine/app
+ReadWritePaths=/home/trivia/logs
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=1G
+CPUQuota=100%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=trivia-api
+
+[Install]
+WantedBy=multi-user.target

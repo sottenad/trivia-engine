@@ -1,10 +1,7 @@
 const jwt = require('jsonwebtoken');
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const { prisma } = require('../../config/database');
+const config = require('../../config');
 const asyncHandler = require('express-async-handler');
-
-// JWT Secret
-const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key';
 
 /**
  * Middleware to protect routes - verify JWT token
@@ -27,7 +24,7 @@ const protect = asyncHandler(async (req, res, next) => {
     }
     
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = jwt.verify(token, config.jwt.secret);
       req.user = await prisma.user.findUnique({
         where: { id: decoded.id },
         select: {

@@ -1,71 +1,102 @@
 const express = require('express');
-const helmet = require('helmet');
 const cors = require('cors');
-const { PrismaClient } = require('@prisma/client');
-const dotenv = require('dotenv');
-
-// Load environment variables
-dotenv.config();
+const config = require('../config');
+const { prisma } = require('../config/database');
 
 // Route imports
-const userRoutes = require('./routes/userRoutes');
-const apiKeyRoutes = require('./routes/apiKeyRoutes');
-const triviaRoutes = require('./routes/triviaRoutes');
+const v1Routes = require('./v1');
 
 // Middleware imports
-const { errorHandler } = require('./middleware/errorMiddleware');
+const { errorHandler, notFound } = require('./middleware/errorMiddleware');
+const requestId = require('./middleware/requestId');
+const requestLogger = require('./middleware/requestLogger');
+const { sanitizeRequest } = require('./middleware/sanitization');
+const { securityHeaders, additionalSecurity, apiRateLimiter } = require('./middleware/security');
 
 // Initialize Express app
 const app = express();
-const prisma = new PrismaClient();
 
-// Set port from environment or default
-const PORT = process.env.PORT || 3003;
+// Set port from config
+const PORT = config.port;
 
 // Security middleware
-app.use(helmet());
-app.use(cors());
+app.use(securityHeaders);
+app.use(additionalSecurity);
+app.use(cors({
+  origin: config.security.corsOrigin,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-Request-ID'],
+  maxAge: 86400 // 24 hours
+}));
+
+// Request ID middleware
+app.use(requestId);
+
+// Global rate limiting
+if (config.rateLimit.globalEnabled) {
+  app.use(apiRateLimiter);
+}
+
+// Input sanitization
+app.use(sanitizeRequest);
 
 // Body parser middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// Mount routes
-app.use('/api/users', userRoutes);
-app.use('/api/keys', apiKeyRoutes);
-app.use('/api/trivia', triviaRoutes);
+// Request logging middleware (after body parser)
+app.use(requestLogger);
 
-// Health check route
+// Mount v1 routes
+app.use('/api/v1', v1Routes);
+
+// Legacy route support (redirect to v1)
+app.use('/api/users', (req, res) => res.redirect(301, `/api/v1/users${req.url}`));
+app.use('/api/keys', (req, res) => res.redirect(301, `/api/v1/keys${req.url}`));
+app.use('/api/trivia', (req, res) => res.redirect(301, `/api/v1/trivia${req.url}`));
+
+// Health check route (available at both paths)
 app.get('/api/health', (req, res) => {
   res.json({
     success: true,
-    message: 'API is running',
-    timestamp: new Date()
+    data: {
+      status: 'healthy',
+      timestamp: new Date(),
+      version: 'v1'
+    }
+  });
+});
+
+app.get('/api/v1/health', (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      status: 'healthy',
+      timestamp: new Date(),
+      version: 'v1'
+    }
+  });
+});
+
+// API info route
+app.get('/api', (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      message: 'Trivia Engine API',
+      currentVersion: 'v1',
+      availableVersions: ['v1'],
+      documentation: '/api/v1'
+    }
   });
 });
 
 // Catch 404 routes
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'Route not found'
-  });
-});
+app.use(notFound);
 
-// Error handling middleware
+// Error handling middleware (single handler)
 app.use(errorHandler);
-
-// Add global error handling middleware at the end of your middleware chain
-app.use((err, req, res, next) => {
-  console.error('Global error handler caught:', err.stack);
-  const statusCode = err.statusCode || 500;
-  const message = err.message || 'Internal Server Error';
-  res.status(statusCode).json({
-    success: false,
-    error: message,
-    stack: process.env.NODE_ENV === 'production' ? '🥞' : err.stack
-  });
-});
 
 // Catch unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {

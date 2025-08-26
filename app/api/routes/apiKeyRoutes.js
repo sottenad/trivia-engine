@@ -10,6 +10,7 @@ const {
   updateRateLimit
 } = require('../controllers/apiKeyController');
 const { protect } = require('../middleware/authMiddleware');
+const { handleValidationErrors } = require('../middleware/sanitization');
 
 // Input validation rules
 const apiKeyCreateValidation = [
@@ -29,7 +30,7 @@ const rateLimitValidation = [
 // @route   POST /api/keys
 // @desc    Create a new API key
 // @access  Private
-router.post('/', protect, apiKeyCreateValidation, createApiKey);
+router.post('/', protect, apiKeyCreateValidation, handleValidationErrors, createApiKey);
 
 // @route   GET /api/keys
 // @desc    Get all API keys for the user
@@ -44,7 +45,7 @@ router.get('/:id', protect, getApiKeyById);
 // @route   PUT /api/keys/:id
 // @desc    Update API key (name, active status)
 // @access  Private
-router.put('/:id', protect, apiKeyUpdateValidation, updateApiKey);
+router.put('/:id', protect, apiKeyUpdateValidation, handleValidationErrors, updateApiKey);
 
 // @route   DELETE /api/keys/:id
 // @desc    Delete API key
@@ -54,6 +55,6 @@ router.delete('/:id', protect, deleteApiKey);
 // @route   PUT /api/keys/:id/rate-limit
 // @desc    Update rate limit for an API key
 // @access  Private
-router.put('/:id/rate-limit', protect, rateLimitValidation, updateRateLimit);
+router.put('/:id/rate-limit', protect, rateLimitValidation, handleValidationErrors, updateRateLimit);
 
 module.exports = router; 

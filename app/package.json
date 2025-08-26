@@ -30,7 +30,8 @@
     "jsdom": "^26.0.0",
     "jsonwebtoken": "^9.0.2",
     "prisma": "^6.5.0",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "xss": "^1.0.15"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"

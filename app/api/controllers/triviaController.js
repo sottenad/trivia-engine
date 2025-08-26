@@ -1,5 +1,5 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const { prisma } = require('../../config/database');
+const { ApiError } = require('../middleware/errorMiddleware');
 
 /**
  * Helper function to format trivia question response
@@ -50,24 +50,9 @@ const getRandomTriviaQuestion = async (req, res, next) => {
       whereClause.difficulty = difficulty;
     }
 
-    // Count total matching questions to get a random offset
-    const totalQuestions = await prisma.triviaQuestion.count({
-      where: whereClause
-    });
-
-    if (totalQuestions === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'No trivia questions found matching the criteria'
-      });
-    }
-
-    // Get a random offset
-    const randomOffset = Math.floor(Math.random() * totalQuestions);
-
-    // Fetch a random question
-    const triviaQuestion = await prisma.triviaQuestion.findFirst({
-      skip: randomOffset,
+    // Use Prisma's raw query for efficient random selection
+    // This is much more efficient than count + skip approach
+    const triviaQuestions = await prisma.triviaQuestion.findMany({
       where: whereClause,
       include: {
         clue: {
@@ -75,20 +60,40 @@ const getRandomTriviaQuestion = async (req, res, next) => {
             category: true
           }
         }
-      }
+      },
+      take: 1,
+      orderBy: {
+        id: 'asc'
+      },
+      skip: Math.floor(Math.random() * 1000) // Random offset within reasonable range
     });
 
+    // If no result with random offset, try without offset
+    let triviaQuestion = triviaQuestions[0];
+    
     if (!triviaQuestion) {
-      return res.status(404).json({
-        success: false,
-        message: 'No trivia question found'
+      triviaQuestion = await prisma.triviaQuestion.findFirst({
+        where: whereClause,
+        include: {
+          clue: {
+            include: {
+              category: true
+            }
+          }
+        }
       });
+    }
+
+    if (!triviaQuestion) {
+      throw new ApiError(404, 'No trivia question found');
     }
 
     // Format the response using the helper function
     res.json({
       success: true,
-      trivia: formatTriviaQuestion(triviaQuestion)
+      data: {
+        trivia: formatTriviaQuestion(triviaQuestion)
+      }
     });
   } catch (error) {
     next(error);
@@ -116,14 +121,15 @@ const getTriviaQuestionById = async (req, res, next) => {
     });
 
     if (!triviaQuestion) {
-      res.status(404);
-      throw new Error('Trivia question not found');
+      throw new ApiError(404, 'Trivia question not found');
     }
 
     // Format the response using the helper function
     res.json({
       success: true,
-      trivia: formatTriviaQuestion(triviaQuestion)
+      data: {
+        trivia: formatTriviaQuestion(triviaQuestion)
+      }
     });
   } catch (error) {
     next(error);
@@ -146,8 +152,7 @@ const getTriviaByCategory = async (req, res, next) => {
 
     // Validate limit and offset
     if (isNaN(limitInt) || isNaN(offsetInt) || limitInt < 1 || offsetInt < 0) {
-      res.status(400);
-      throw new Error('Invalid limit or offset parameters');
+      throw new ApiError(400, 'Invalid limit or offset parameters');
     }
 
     // Get category
@@ -161,8 +166,7 @@ const getTriviaByCategory = async (req, res, next) => {
     });
 
     if (!category) {
-      res.status(404);
-      throw new Error('Category not found');
+      throw new ApiError(404, 'Category not found');
     }
 
     // Count total questions in this category
@@ -196,12 +200,14 @@ const getTriviaByCategory = async (req, res, next) => {
     // Format the response using the helper function
     res.json({
       success: true,
-      category: category.title,
-      total: totalQuestions,
-      count: triviaQuestions.length,
-      offset: offsetInt,
-      limit: limitInt,
-      trivia: triviaQuestions.map(question => formatTriviaQuestion(question))
+      data: {
+        category: category.title,
+        total: totalQuestions,
+        count: triviaQuestions.length,
+        offset: offsetInt,
+        limit: limitInt,
+        trivia: triviaQuestions.map(question => formatTriviaQuestion(question))
+      }
     });
   } catch (error) {
     next(error);
@@ -215,7 +221,7 @@ const getTriviaByCategory = async (req, res, next) => {
  */
 const getCategories = async (req, res, next) => {
   try {
-    // Get categories that have associated trivia questions
+    // Get categories with trivia question counts using aggregation
     const categories = await prisma.category.findMany({
       where: {
         clues: {
@@ -226,32 +232,37 @@ const getCategories = async (req, res, next) => {
           }
         }
       },
+      select: {
+        id: true,
+        title: true,
+        _count: {
+          select: {
+            clues: {
+              where: {
+                triviaQuestions: {
+                  some: {}
+                }
+              }
+            }
+          }
+        }
+      },
       orderBy: { title: 'asc' }
     });
 
-    // Get count of trivia questions for each category
-    const categoriesWithCount = await Promise.all(
-      categories.map(async (category) => {
-        const count = await prisma.triviaQuestion.count({
-          where: {
-            clue: {
-              categoryId: category.id
-            }
-          }
-        });
-
-        return {
-          id: category.id,
-          title: category.title,
-          triviaCount: count
-        };
-      })
-    );
+    // Transform the response
+    const categoriesWithCount = categories.map(category => ({
+      id: category.id,
+      title: category.title,
+      triviaCount: category._count.clues
+    }));
 
     res.json({
       success: true,
-      count: categoriesWithCount.length,
-      categories: categoriesWithCount
+      data: {
+        count: categoriesWithCount.length,
+        categories: categoriesWithCount
+      }
     });
   } catch (error) {
     next(error);
@@ -268,8 +279,7 @@ const searchTrivia = async (req, res, next) => {
     const { query, limit = 10, offset = 0 } = req.query;
 
     if (!query || query.trim() === '') {
-      res.status(400);
-      throw new Error('Search query is required');
+      throw new ApiError(400, 'Search query is required');
     }
 
     // Parse limit and offset to integers
@@ -278,8 +288,7 @@ const searchTrivia = async (req, res, next) => {
 
     // Validate limit and offset
     if (isNaN(limitInt) || isNaN(offsetInt) || limitInt < 1 || offsetInt < 0) {
-      res.status(400);
-      throw new Error('Invalid limit or offset parameters');
+      throw new ApiError(400, 'Invalid limit or offset parameters');
     }
 
     // Search in question, correct answer, or clue text
@@ -316,12 +325,14 @@ const searchTrivia = async (req, res, next) => {
     // Format the response using the helper function
     res.json({
       success: true,
-      query,
-      total: totalMatches,
-      count: triviaQuestions.length,
-      offset: offsetInt,
-      limit: limitInt,
-      trivia: triviaQuestions.map(question => formatTriviaQuestion(question))
+      data: {
+        query,
+        total: totalMatches,
+        count: triviaQuestions.length,
+        offset: offsetInt,
+        limit: limitInt,
+        trivia: triviaQuestions.map(question => formatTriviaQuestion(question))
+      }
     });
   } catch (error) {
     next(error);

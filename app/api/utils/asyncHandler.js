@@ -6,13 +6,7 @@
 const asyncHandler = (fn) => {
   return (req, res, next) => {
     Promise.resolve(fn(req, res, next))
-      .catch((error) => {
-        console.error('AsyncHandler caught error:', error);
-        return res.status(500).json({
-          success: false,
-          error: error.message || 'Server Error'
-        });
-      });
+      .catch(next); // Forward errors to error middleware
   };
 };
 
