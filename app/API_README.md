@@ -10,8 +10,10 @@ The API uses two authentication methods:
 
 ## Base URL
 ```
-http://localhost:3000/api
+http://localhost:3003/api/v1
 ```
+
+Note: Legacy endpoints at `/api/{endpoint}` are redirected to `/api/v1/{endpoint}` for backward compatibility.
 
 ## Rate Limiting
 Each API key has rate limits that can be configured. By default, keys are limited to 100 requests per hour.
