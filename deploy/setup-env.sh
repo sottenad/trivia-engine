@@ -11,6 +11,43 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+# Default options
+FORCE_ENV=""
+SKIP_DB_CHECK=false
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --production)
+            FORCE_ENV="production"
+            shift
+            ;;
+        --development)
+            FORCE_ENV="development"
+            shift
+            ;;
+        --skip-db-check)
+            SKIP_DB_CHECK=true
+            shift
+            ;;
+        --help)
+            echo "Usage: $0 [options]"
+            echo ""
+            echo "Options:"
+            echo "  --production     Force production environment"
+            echo "  --development    Force development environment"
+            echo "  --skip-db-check  Skip database connection validation"
+            echo "  --help           Show this help message"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
+
 # Functions
 print_header() {
     echo -e "\n${BLUE}=== $1 ===${NC}\n"
@@ -37,38 +74,77 @@ generate_secret() {
 # Validate PostgreSQL connection string
 validate_database_url() {
     local db_url=$1
-    if [[ $db_url =~ ^postgresql://[^:]+:[^@]+@[^/]+/[^?]+(\?.*)?$ ]]; then
-        # Try to connect
-        if command -v psql &> /dev/null; then
-            if psql "$db_url" -c "SELECT 1" &> /dev/null; then
-                print_success "Database connection successful"
-                return 0
-            else
-                print_error "Database connection failed"
-                return 1
-            fi
-        else
-            print_warning "psql not installed, cannot test connection"
+    
+    # Check URL format
+    if [[ ! $db_url =~ ^postgresql://[^:]+:[^@]+@[^/]+/[^?]+(\?.*)?$ ]]; then
+        print_error "Invalid DATABASE_URL format"
+        print_warning "Expected format: postgresql://username:password@host:port/database"
+        return 1
+    fi
+    
+    # Skip actual connection test if requested
+    if [ "$SKIP_DB_CHECK" = "true" ]; then
+        print_warning "Skipping database connection test (--skip-db-check)"
+        return 0
+    fi
+    
+    # Try to connect
+    if command -v psql &> /dev/null; then
+        if psql "$db_url" -c "SELECT 1" &> /dev/null; then
+            print_success "Database connection successful"
             return 0
+        else
+            print_error "Database connection failed"
+            print_warning "Make sure PostgreSQL is running and credentials are correct"
+            return 1
         fi
     else
-        print_error "Invalid DATABASE_URL format"
-        return 1
+        print_warning "psql not installed, cannot test connection"
+        return 0
     fi
 }
 
 # Main setup
 print_header "Trivia Engine Environment Setup"
 
-# Detect environment
-if [ -f "/home/trivia/trivia-engine/app/.env" ]; then
-    ENV_TYPE="production"
+# Detect environment and find app directory
+# Check if we're in a subdirectory of the project
+CURRENT_DIR="$(pwd)"
+if [[ "$CURRENT_DIR" == */trivia-engine/deploy ]]; then
+    APP_DIR="$(dirname "$CURRENT_DIR")"
+elif [[ "$CURRENT_DIR" == */trivia-engine ]]; then
+    APP_DIR="$CURRENT_DIR"
+elif [ -d "/home/trivia/trivia-engine" ]; then
     APP_DIR="/home/trivia/trivia-engine"
-    print_warning "Detected production environment"
 else
-    ENV_TYPE="development"
-    APP_DIR="$(pwd)"
-    print_warning "Detected development environment"
+    print_error "Could not find trivia-engine directory"
+    exit 1
+fi
+
+# Detect environment type
+if [ -n "$FORCE_ENV" ]; then
+    ENV_TYPE="$FORCE_ENV"
+    print_warning "Using forced environment: $ENV_TYPE"
+else
+    # Auto-detect environment
+    if [[ "$APP_DIR" == "/home/trivia/trivia-engine" ]] || \
+       [[ -f /etc/digitalocean ]] || \
+       [[ -f /.dockerenv ]] || \
+       [[ "$HOSTNAME" == *"droplet"* ]] || \
+       [[ "$PWD" == "/root"* ]]; then
+        ENV_TYPE="production"
+        print_warning "Detected production environment at $APP_DIR"
+    else
+        ENV_TYPE="development"
+        print_warning "Detected development environment at $APP_DIR"
+    fi
+fi
+
+# Ensure app directory exists
+if [ ! -d "$APP_DIR/app" ]; then
+    print_error "App directory not found at $APP_DIR/app"
+    print_warning "Make sure you're running this from the trivia-engine directory or its deploy subdirectory"
+    exit 1
 fi
 
 # Ask for confirmation
@@ -114,18 +190,43 @@ EOF
     print_header "Database Configuration"
     if [ "$ENV_TYPE" = "production" ]; then
         echo "Enter your PostgreSQL connection details:"
+        echo ""
+        echo "Example: If you have a database 'trivia_prod' with user 'trivia_user' on localhost"
+        echo "Host: localhost, Port: 5432, Database: trivia_prod, User: trivia_user"
+        echo ""
+        
         read -p "Database host (default: localhost): " DB_HOST
         DB_HOST=${DB_HOST:-localhost}
+        
         read -p "Database port (default: 5432): " DB_PORT
         DB_PORT=${DB_PORT:-5432}
-        read -p "Database name: " DB_NAME
-        read -p "Database user: " DB_USER
-        read -s -p "Database password: " DB_PASS
-        echo
+        
+        while [ -z "$DB_NAME" ]; do
+            read -p "Database name (required): " DB_NAME
+        done
+        
+        while [ -z "$DB_USER" ]; do
+            read -p "Database user (required): " DB_USER
+        done
+        
+        while [ -z "$DB_PASS" ]; do
+            read -s -p "Database password (required): " DB_PASS
+            echo
+        done
+        
         DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+        echo ""
+        print_warning "Database URL: postgresql://${DB_USER}:****@${DB_HOST}:${DB_PORT}/${DB_NAME}"
     else
-        DATABASE_URL="postgresql://postgres:postgres@localhost:5432/trivia_dev"
-        print_warning "Using default development database URL"
+        # Development defaults
+        read -p "Use default development database? (postgresql://postgres:postgres@localhost:5432/trivia_dev) [Y/n]: " USE_DEFAULT
+        if [[ "$USE_DEFAULT" =~ ^[Nn]$ ]]; then
+            # Custom development database
+            read -p "Database URL: " DATABASE_URL
+        else
+            DATABASE_URL="postgresql://postgres:postgres@localhost:5432/trivia_dev"
+            print_warning "Using default development database URL"
+        fi
     fi
 
     # Validate database connection

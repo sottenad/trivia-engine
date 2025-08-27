@@ -8,7 +8,13 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
     "dev": "tsc --watch",
-    "start": "node build/index.js"
+    "start": "node build/index.js",
+    "docker:build": "docker build -t trivia-engine-mcp:latest .",
+    "docker:build:dev": "docker build -f Dockerfile.dev -t trivia-engine-mcp:dev .",
+    "docker:run": "docker run --rm -it --env-file .env trivia-engine-mcp:latest",
+    "docker:run:dev": "docker-compose up mcp-server-dev",
+    "docker:compose:up": "docker-compose up mcp-server",
+    "docker:compose:down": "docker-compose down"
   },
   "keywords": ["mcp", "trivia", "api", "model-context-protocol"],
   "author": "Trivia Engine Team",

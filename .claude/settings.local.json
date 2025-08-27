@@ -5,7 +5,8 @@
       "Bash(find:*)",
       "Bash(npm run build:*)",
       "Bash(npx tsc:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "WebFetch(domain:docs.stacklok.com)"
     ],
     "deny": []
   }

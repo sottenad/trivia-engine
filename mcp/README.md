@@ -169,6 +169,94 @@ npm run dev
 npm start
 ```
 
+## Docker Support
+
+The MCP server can be run in Docker for better isolation and deployment.
+
+### Quick Start with Docker
+
+```bash
+# Build the Docker image
+npm run docker:build
+
+# Run with Docker (reads .env file)
+npm run docker:run
+
+# Or use docker-compose
+npm run docker:compose:up
+```
+
+### Docker Configuration
+
+#### Using Docker with Claude Desktop
+
+Update your Claude Desktop configuration to use Docker:
+
+```json
+{
+  "mcpServers": {
+    "trivia-engine": {
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "-i",
+        "--env", "TRIVIA_API_BASE_URL=http://host.docker.internal:3003/api/v1",
+        "--env", "TRIVIA_API_KEY=your-api-key-here",
+        "trivia-engine-mcp:latest"
+      ]
+    }
+  }
+}
+```
+
+#### Development with Docker
+
+For development with hot reload:
+
+```bash
+# Build development image
+npm run docker:build:dev
+
+# Run with docker-compose (includes volume mounts)
+npm run docker:run:dev
+```
+
+#### Environment Variables
+
+Create a `.env` file for Docker:
+
+```env
+TRIVIA_API_BASE_URL=http://host.docker.internal:3003/api/v1
+TRIVIA_API_KEY=your-api-key-here
+```
+
+Note: `host.docker.internal` allows the container to access services on your host machine.
+
+#### Using with Toolhive
+
+If using Stacklok Toolhive, you can deploy the Docker image:
+
+```bash
+# Run with Toolhive
+thv run trivia-engine-mcp --image trivia-engine-mcp:latest \
+  --env TRIVIA_API_BASE_URL=http://host.docker.internal:3003/api/v1 \
+  --env TRIVIA_API_KEY=your-api-key-here
+```
+
+Then configure Claude Desktop to use Toolhive's proxy:
+
+```json
+{
+  "mcpServers": {
+    "trivia-engine": {
+      "command": "thv",
+      "args": ["proxy", "trivia-engine-mcp"]
+    }
+  }
+}
+```
+
 ## Error Handling
 
 The MCP server includes comprehensive error handling:

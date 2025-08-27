@@ -10,11 +10,17 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-# Detect environment
-if [ -f "/home/trivia/trivia-engine/app/.env" ]; then
+# Detect environment and find app directory
+CURRENT_DIR="$(pwd)"
+if [[ "$CURRENT_DIR" == */trivia-engine/deploy ]]; then
+    APP_DIR="$(dirname "$CURRENT_DIR")"
+elif [[ "$CURRENT_DIR" == */trivia-engine ]]; then
+    APP_DIR="$CURRENT_DIR"
+elif [ -d "/home/trivia/trivia-engine" ]; then
     APP_DIR="/home/trivia/trivia-engine"
 else
-    APP_DIR="$(pwd)"
+    echo -e "${RED}Could not find trivia-engine directory${NC}"
+    exit 1
 fi
 
 echo "Checking environment files in: $APP_DIR"
