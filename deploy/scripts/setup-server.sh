@@ -172,26 +172,19 @@ sudo ufw allow 3003/tcp  # API dev
 echo "y" | sudo ufw enable
 check_status "Firewall configured"
 
-# Configure Nginx
-echo -e "\n${YELLOW}Step 12: Configuring Nginx...${NC}"
+# Configure Nginx (Initial HTTP-only for Certbot)
+echo -e "\n${YELLOW}Step 12: Configuring Nginx (HTTP-only initially)...${NC}"
 sudo tee /etc/nginx/sites-available/trivia-engine > /dev/null <<EOF
-# Redirect HTTP to HTTPS
+# Initial HTTP-only configuration for Certbot
 server {
     listen 80;
     listen [::]:80;
     server_name ${DOMAIN} www.${DOMAIN};
-    return 301 https://\$server_name\$request_uri;
-}
 
-# Main HTTPS server block
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-    server_name ${DOMAIN} www.${DOMAIN};
-
-    # SSL configuration (will be updated by certbot)
-    # ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
-    # ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    # Allow Let's Encrypt ACME challenges
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
 
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
@@ -238,13 +231,13 @@ server {
     gzip on;
     gzip_vary on;
     gzip_min_length 1024;
-    gzip_types text/plain text/css text/xml text/javascript application/json application/javascript application/xml+rss application/rss+xml application/atom+xml image/svg+xml text/javascript application/vnd.ms-fontobject application/x-font-ttf font/opentype;
+    gzip_types text/plain text/css text/xml application/json application/javascript application/xml+rss application/rss+xml application/atom+xml image/svg+xml application/vnd.ms-fontobject application/x-font-ttf font/opentype;
 }
 EOF
 
 sudo ln -sf /etc/nginx/sites-available/trivia-engine /etc/nginx/sites-enabled/
 sudo nginx -t
-check_status "Nginx configured"
+check_status "Nginx configured (HTTP-only)"
 
 # Clone repository
 echo -e "\n${YELLOW}Step 13: Cloning repository...${NC}"
@@ -363,11 +356,106 @@ check_status "Nginx restarted"
 
 # Set up SSL
 echo -e "\n${YELLOW}Step 21: Setting up SSL certificate...${NC}"
-sudo certbot --nginx -d ${DOMAIN} -d www.${DOMAIN} --non-interactive --agree-tos --email ${SSL_EMAIL}
-check_status "SSL certificate configured"
+sudo certbot certonly --webroot -w /var/www/html -d ${DOMAIN} -d www.${DOMAIN} --non-interactive --agree-tos --email ${SSL_EMAIL}
+check_status "SSL certificate obtained"
+
+# Update Nginx configuration with SSL
+echo -e "\n${YELLOW}Step 22: Updating Nginx with SSL configuration...${NC}"
+sudo cp /etc/nginx/sites-available/trivia-engine /etc/nginx/sites-available/trivia-engine.backup
+sudo tee /etc/nginx/sites-available/trivia-engine > /dev/null <<EOF
+# HTTP redirect to HTTPS
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DOMAIN} www.${DOMAIN};
+    
+    # Allow Let's Encrypt renewals
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+    
+    # Redirect all other traffic to HTTPS
+    location / {
+        return 301 https://\\\$server_name\\\$request_uri;
+    }
+}
+
+# HTTPS server block
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name ${DOMAIN} www.${DOMAIN};
+
+    # SSL Configuration
+    ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:50m;
+    ssl_session_tickets off;
+
+    # Modern configuration
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+
+    # HSTS
+    add_header Strict-Transport-Security "max-age=63072000" always;
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+
+    # Logging
+    access_log /var/log/nginx/trivia-engine.access.log;
+    error_log /var/log/nginx/trivia-engine.error.log;
+
+    # API proxy
+    location /api {
+        proxy_pass http://localhost:3003;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \\\$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \\\$host;
+        proxy_cache_bypass \\\$http_upgrade;
+        proxy_set_header X-Real-IP \\\$remote_addr;
+        proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \\\$scheme;
+        
+        # Timeouts
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+
+    # Marketing site proxy
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \\\$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \\\$host;
+        proxy_cache_bypass \\\$http_upgrade;
+        proxy_set_header X-Real-IP \\\$remote_addr;
+        proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \\\$scheme;
+    }
+
+    # Gzip compression
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css text/xml application/json application/javascript application/xml+rss application/rss+xml application/atom+xml image/svg+xml application/vnd.ms-fontobject application/x-font-ttf font/opentype;
+}
+EOF
+
+sudo nginx -t
+sudo systemctl reload nginx
+check_status "Nginx updated with SSL"
 
 # Final setup
-echo -e "\n${YELLOW}Step 22: Final configuration...${NC}"
+echo -e "\n${YELLOW}Step 23: Final configuration...${NC}"
 sudo chown -R ${APP_USER}:${APP_USER} ${APP_DIR}
 check_status "Permissions set"
 
