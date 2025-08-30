@@ -40,7 +40,7 @@ export default function ContactSection() {
       
       // Reset form
       setFormData({ name: '', email: '', message: '' });
-    } catch (error) {
+    } catch {
       setSubmitStatus({
         type: 'error',
         message: 'Something went wrong. Please try again later.'
@@ -59,7 +59,7 @@ export default function ContactSection() {
           </h2>
           <p className="text-xl text-gray-400 max-w-3xl mx-auto">
             Have questions about our API? Need help with integration? 
-            We're here to help you succeed.
+            We&apos;re here to help you succeed.
           </p>
         </div>
 
@@ -119,7 +119,7 @@ export default function ContactSection() {
                 Our support team is available Monday through Friday, 9 AM - 5 PM EST.
               </p>
               <p className="text-sm text-gray-500">
-                For urgent issues, please email us with "URGENT" in the subject line.
+                For urgent issues, please email us with &quot;URGENT&quot; in the subject line.
               </p>
             </div>
           </div>

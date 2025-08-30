@@ -80,12 +80,9 @@ const nextConfig = {
 
   // Experimental features for better performance
   experimental: {
-    optimizeCss: true,
+    // optimizeCss: true, // Disabled due to critters dependency issue
     optimizePackageImports: ['react', 'react-dom'],
   },
-  
-  // SWC minification (default in Next.js 13+)
-  swcMinify: true,
 };
 
 export default nextConfig;

@@ -239,10 +239,25 @@ sudo ln -sf /etc/nginx/sites-available/trivia-engine /etc/nginx/sites-enabled/
 sudo nginx -t
 check_status "Nginx configured (HTTP-only)"
 
-# Clone repository
-echo -e "\n${YELLOW}Step 13: Cloning repository...${NC}"
-sudo -u ${APP_USER} git clone ${GITHUB_REPO} ${APP_DIR}
-check_status "Repository cloned"
+# Clone or update repository
+echo -e "\n${YELLOW}Step 13: Setting up repository...${NC}"
+if [ -d "${APP_DIR}/.git" ]; then
+    echo -e "${YELLOW}Repository already exists, pulling latest changes...${NC}"
+    cd ${APP_DIR}
+    sudo -u ${APP_USER} git fetch origin
+    sudo -u ${APP_USER} git reset --hard origin/main
+    sudo -u ${APP_USER} git pull origin main
+    check_status "Repository updated"
+else
+    echo -e "${YELLOW}Cloning repository...${NC}"
+    # Remove directory if it exists but is not a git repo
+    if [ -d "${APP_DIR}" ]; then
+        echo -e "${YELLOW}Removing existing non-git directory...${NC}"
+        sudo rm -rf ${APP_DIR}
+    fi
+    sudo -u ${APP_USER} git clone ${GITHUB_REPO} ${APP_DIR}
+    check_status "Repository cloned"
+fi
 
 # Create environment files
 echo -e "\n${YELLOW}Step 14: Creating environment files...${NC}"
@@ -323,15 +338,21 @@ check_status "Automated backups configured"
 echo -e "\n${YELLOW}Step 17: Installing dependencies and building applications...${NC}"
 cd ${APP_DIR}/app
 sudo -u ${APP_USER} npm install
+# Fix known vulnerabilities (non-breaking)
+sudo -u ${APP_USER} npm audit fix 2>/dev/null || true
 check_status "API dependencies installed"
 
 cd ${APP_DIR}/marketing
 sudo -u ${APP_USER} npm install
+# Fix known vulnerabilities (non-breaking)
+sudo -u ${APP_USER} npm audit fix 2>/dev/null || true
 sudo -u ${APP_USER} npm run build
 check_status "Marketing site built"
 
 cd ${APP_DIR}/mcp
 sudo -u ${APP_USER} npm install
+# Fix known vulnerabilities (non-breaking)
+sudo -u ${APP_USER} npm audit fix 2>/dev/null || true
 sudo -u ${APP_USER} npm run build
 check_status "MCP server built"
 

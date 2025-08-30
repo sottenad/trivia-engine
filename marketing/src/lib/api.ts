@@ -21,10 +21,10 @@ class ApiClient {
   private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const url = `${this.config.baseUrl}${endpoint}`;
     
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...this.config.headers,
-      ...options?.headers,
+      ...options?.headers as Record<string, string>,
     };
 
     // Only add API key if it exists and is not a placeholder

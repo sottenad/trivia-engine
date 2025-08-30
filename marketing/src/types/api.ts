@@ -25,20 +25,20 @@ export interface ApiResponse<T> {
   error?: {
     message: string;
     statusCode?: number;
-    details?: any;
+    details?: unknown;
   };
 }
 
-export interface TriviaApiResponse extends ApiResponse<{ trivia: TriviaQuestion }> {}
+export type TriviaApiResponse = ApiResponse<{ trivia: TriviaQuestion }>;
 
-export interface CategoriesApiResponse extends ApiResponse<{
+export type CategoriesApiResponse = ApiResponse<{
   count: number;
   categories: Array<{
     id: number;
     title: string;
     triviaCount: number;
   }>;
-}> {}
+}>;
 
 export interface ApiConfig {
   baseUrl: string;
