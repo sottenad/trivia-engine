@@ -9,6 +9,8 @@ deploy-package/
 /mcp/node_modules
 /mcp/build
 
+CONNECT_TO_SERVER.md
+
 # dependencies
 /node_modules
 /.pnp
