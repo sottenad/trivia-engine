@@ -147,7 +147,7 @@ jobs:
         run: |
           sleep 10
           # Check API health
-          curl -f https://api.trivia-engine.com/health || exit 1
+          curl -f https://api.trivia-engine.com/api/health || exit 1
           # Check marketing site
           curl -f https://trivia-engine.com || exit 1
 
