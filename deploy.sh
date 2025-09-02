@@ -87,23 +87,34 @@ server {
 }
 EOF
 
-# Create nginx configuration for Marketing site
+# Create nginx configuration for Marketing site (static files)
 sudo tee /etc/nginx/sites-available/${DOMAIN} > /dev/null <<EOF
 server {
     listen 80;
     listen [::]:80;
     server_name ${DOMAIN} ${WWW_DOMAIN};
 
+    # Serve static Next.js export
+    root /home/trivia/trivia-engine/marketing;
+    index index.html;
+
+    # Enable gzip compression
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+
     location / {
-        proxy_pass http://localhost:${MARKETING_PORT};
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_cache_bypass \$http_upgrade;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        try_files \$uri \$uri.html \$uri/ /index.html;
+    }
+
+    # Cache static assets
+    location /_next/static {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
     }
 }
 EOF

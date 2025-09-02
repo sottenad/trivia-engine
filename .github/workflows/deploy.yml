@@ -69,55 +69,33 @@ jobs:
           # Copy Marketing built files
           mkdir -p deploy-package/marketing
           
-          # Debug: Check what Next.js build created
+          # Check if static export was created (output: 'export')
           echo "Checking Next.js build output..."
-          ls -la marketing/.next/ | head -20
-          
-          # Check if standalone build exists (from next.config.mjs output: 'standalone')
-          if [ -d "marketing/.next/standalone" ]; then
-            echo "✅ Found Next.js standalone build"
-            echo "Contents of standalone directory:"
-            ls -la marketing/.next/standalone/ | head -10
+          if [ -d "marketing/out" ]; then
+            echo "✅ Found Next.js static export in 'out' directory"
+            ls -la marketing/out/ | head -20
             
-            # Copy standalone files to root of marketing deploy folder
-            # This is how Next.js expects standalone to be deployed
-            cp -r marketing/.next/standalone/* deploy-package/marketing/
+            # Copy static export files
+            cp -r marketing/out/* deploy-package/marketing/
             
-            # Copy static files and public separately (required for standalone)
-            mkdir -p deploy-package/marketing/.next
-            cp -r marketing/.next/static deploy-package/marketing/.next/
-            cp -r marketing/public deploy-package/marketing/ 2>/dev/null || true
-            
-            echo "Verifying standalone deployment structure:"
-            ls -la deploy-package/marketing/ | head -10
-            echo "Checking for server.js:"
-            find deploy-package/marketing -name "server.js" -type f | head -5
-          else
-            echo "⚠️ WARNING: No standalone build found!"
-            echo "Next.js 15 may have issues with standalone mode."
-            echo "Using full build with production dependencies..."
-            
-            # Copy full Next.js build
-            cp -r marketing/.next deploy-package/marketing/
-            cp -r marketing/public deploy-package/marketing/ 2>/dev/null || true
-            cp marketing/package*.json deploy-package/marketing/
-            
-            # Install ONLY production dependencies locally and copy
-            echo "Installing production dependencies for deployment..."
-            mkdir -p temp-marketing
-            cp marketing/package*.json temp-marketing/
-            cd temp-marketing
-            # Install with --omit=dev for production only
-            npm ci --omit=dev
-            cd ..
-            
-            # Copy the production node_modules
-            cp -r temp-marketing/node_modules deploy-package/marketing/
-            rm -rf temp-marketing
-            
-            echo "Deployment package includes node_modules for marketing"
+            echo "Marketing site is a static export - no Node.js server needed"
             echo "Size of marketing deployment:"
             du -sh deploy-package/marketing/
+          else
+            echo "⚠️ WARNING: No 'out' directory found!"
+            echo "Checking for .next directory as fallback..."
+            
+            if [ -d "marketing/.next" ]; then
+              # Fallback to .next if export didn't work
+              cp -r marketing/.next deploy-package/marketing/
+              cp -r marketing/public deploy-package/marketing/ 2>/dev/null || true
+              cp marketing/package*.json deploy-package/marketing/
+              
+              echo "Using .next build (may need Node.js server)"
+            else
+              echo "ERROR: No build output found!"
+              exit 1
+            fi
           fi
           
           # Copy deployment script

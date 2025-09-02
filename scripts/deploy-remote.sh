@@ -115,54 +115,44 @@ pm2 start api/index.js --name api \
     --log /var/log/pm2/api.log \
     || echo "Failed to start API, check logs"
 
-# Start Marketing site
+# Deploy Marketing site (static files)
+echo "Checking marketing site deployment..."
 cd ${PRODUCTION_DIR}/marketing
 
-# Debug: Show what files exist
-echo "Checking marketing directory structure..."
-echo "Contents of ${PRODUCTION_DIR}/marketing:"
-ls -la ${PRODUCTION_DIR}/marketing/ | head -20
-echo "Contents of ${PRODUCTION_DIR}/marketing/.next (if exists):"
-ls -la ${PRODUCTION_DIR}/marketing/.next/ 2>/dev/null | head -10 || echo "No .next directory"
-echo "Looking for standalone builds:"
-find ${PRODUCTION_DIR}/marketing -name "server.js" -type f 2>/dev/null | head -5
-
-# Check if standalone build exists (Next.js standalone creates a server.js in root when copied)
-if [ -f "${PRODUCTION_DIR}/marketing/server.js" ]; then
-    echo "✅ Found standalone server at: ${PRODUCTION_DIR}/marketing/server.js"
-    echo "Starting standalone Next.js server..."
-    cd ${PRODUCTION_DIR}/marketing
-    # Use node directly to avoid PM2 env issues
-    PORT=3000 pm2 start "node server.js" --name marketing \
-        --max-memory-restart 512M \
-        --log /var/log/pm2/marketing.log
-elif [ -d "${PRODUCTION_DIR}/marketing/.next/standalone" ]; then
-    echo "✅ Found .next/standalone directory"
-    # The standalone build should have been copied to root, but check if it's still in .next
-    if [ -f "${PRODUCTION_DIR}/marketing/.next/standalone/server.js" ]; then
-        echo "Starting from .next/standalone/server.js"
-        cd ${PRODUCTION_DIR}/marketing/.next/standalone
-        PORT=3000 pm2 start "node server.js" --name marketing \
+# Check if this is a static export
+if [ -f "${PRODUCTION_DIR}/marketing/index.html" ]; then
+    echo "✅ Marketing site is a static export"
+    echo "Files will be served directly by nginx - no Node.js process needed"
+    echo "Contents of marketing directory:"
+    ls -la ${PRODUCTION_DIR}/marketing/ | head -20
+    
+    # No PM2 process needed for static files
+    # Just ensure nginx is configured to serve from this directory
+    echo "Static files ready at: ${PRODUCTION_DIR}/marketing/"
+    
+    # Stop any existing marketing PM2 process since we don't need it
+    pm2 delete marketing 2>/dev/null || true
+    echo "Removed PM2 marketing process (not needed for static site)"
+    
+elif [ -f "${PRODUCTION_DIR}/marketing/server.js" ] || [ -d "${PRODUCTION_DIR}/marketing/.next" ]; then
+    echo "Marketing site requires Node.js server (not static export)"
+    echo "Starting with PM2..."
+    
+    # Fallback to server mode if needed
+    if [ -f "${PRODUCTION_DIR}/marketing/server.js" ]; then
+        PORT=3000 pm2 start server.js --name marketing \
             --max-memory-restart 512M \
             --log /var/log/pm2/marketing.log
     else
-        echo "ERROR: Standalone directory exists but no server.js found!"
-        ls -la ${PRODUCTION_DIR}/marketing/.next/standalone/
-    fi
-else
-    echo "❌ ERROR: No standalone build found!"
-    echo "The deployment should include a standalone Next.js build."
-    echo "Checking for node_modules as last resort..."
-    if [ -d "${PRODUCTION_DIR}/marketing/node_modules" ]; then
-        echo "Found node_modules, attempting npm start..."
+        # Try npm start as last resort
         pm2 start npm --name marketing \
             --max-memory-restart 512M \
             --log /var/log/pm2/marketing.log \
             -- start
-    else
-        echo "FATAL: No standalone build and no node_modules. Marketing site cannot start!"
-        echo "Deployment packaging may have failed."
     fi
+else
+    echo "ERROR: No valid marketing site files found!"
+    ls -la ${PRODUCTION_DIR}/marketing/
 fi
 
 # Save PM2 configuration
