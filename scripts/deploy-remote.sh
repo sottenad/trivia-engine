@@ -17,16 +17,22 @@ mkdir -p ${PRODUCTION_DIR}
 
 # Clean PM2 completely to avoid port conflicts
 echo "Cleaning up PM2 services..."
-# First try graceful stop and delete
-pm2 stop all 2>/dev/null || true
-pm2 delete all 2>/dev/null || true
+
+# Check if PM2 is running
+if pm2 list >/dev/null 2>&1; then
+    # PM2 is running, try to stop and delete
+    pm2 stop all 2>/dev/null || true
+    pm2 delete all 2>/dev/null || true
+else
+    echo "PM2 daemon not running, will start fresh"
+fi
 
 # Check if port 3003 is still in use
 if lsof -Pi :3003 -sTCP:LISTEN -t >/dev/null 2>&1; then
-    echo "Port 3003 still in use, killing PM2 daemon..."
-    pm2 kill
-    # Restart PM2 daemon
-    pm2 start
+    echo "Port 3003 still in use, force killing PM2..."
+    pm2 kill 2>/dev/null || true
+    # Kill any remaining node processes on port 3003
+    lsof -ti:3003 | xargs -r kill -9 2>/dev/null || true
     sleep 2
 fi
 
@@ -95,11 +101,19 @@ npx prisma generate
 echo "Starting services..."
 cd ${PRODUCTION_DIR}
 
+# Ensure PM2 daemon is running (will auto-start if not)
+pm2 list >/dev/null 2>&1 || {
+    echo "Starting PM2 daemon..."
+    pm2 startup >/dev/null 2>&1 || true
+}
+
 # Start API
 cd ${PRODUCTION_DIR}/app
+echo "Starting API service..."
 pm2 start api/index.js --name api \
     --max-memory-restart 512M \
-    --log /var/log/pm2/api.log
+    --log /var/log/pm2/api.log \
+    || echo "Failed to start API, check logs"
 
 # Start Marketing site
 cd ${PRODUCTION_DIR}/marketing
