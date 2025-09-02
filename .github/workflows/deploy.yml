@@ -102,23 +102,31 @@ jobs:
       # Deploy to server
       - name: Deploy to Digital Ocean
         run: |
-          # Create deployment directory on server
-          ssh -i ~/.ssh/deploy_key ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} \
-            "mkdir -p /home/trivia/trivia-engine-deploy"
+          # Create tar archive of deployment package
+          echo "Creating deployment archive..."
+          tar -czf deploy-package.tar.gz deploy-package/
           
-          # Copy files to server
-          rsync -avz --delete \
-                -e "ssh -i ~/.ssh/deploy_key" \
-                deploy-package/ \
-                ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }}:/home/trivia/trivia-engine-deploy/
+          # Show archive size for debugging
+          ls -lh deploy-package.tar.gz
           
-          # Run deployment script on server with environment variables
+          # Transfer the single compressed file to server
+          echo "Transferring deployment archive to server..."
+          scp -i ~/.ssh/deploy_key deploy-package.tar.gz \
+              ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }}:/home/trivia/
+          
+          # Extract and deploy on server
+          echo "Extracting and deploying on server..."
           ssh -i ~/.ssh/deploy_key ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} \
-            "cd /home/trivia/trivia-engine-deploy && \
+            "cd /home/trivia && \
+             rm -rf trivia-engine-deploy && \
+             tar -xzf deploy-package.tar.gz && \
+             cd deploy-package && \
              export DATABASE_URL='${{ secrets.DATABASE_URL }}' && \
              export JWT_SECRET='${{ secrets.JWT_SECRET }}' && \
              export PORT=3003 && \
-             bash deploy-remote.sh"
+             bash deploy-remote.sh && \
+             cd .. && \
+             rm -f deploy-package.tar.gz"
 
       # Run database migrations
       - name: Run database migrations

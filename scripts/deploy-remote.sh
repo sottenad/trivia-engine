@@ -8,7 +8,8 @@ set -e
 echo "Starting remote deployment..."
 
 # Configuration
-DEPLOY_DIR="/home/trivia/trivia-engine-deploy"
+# Script now runs from within the extracted deploy-package directory
+DEPLOY_DIR="$(pwd)"
 PRODUCTION_DIR="/home/trivia/trivia-engine"
 
 # Ensure production directory exists
@@ -147,9 +148,8 @@ else
     exit 1
 fi
 
-# Cleanup old deployment files
-echo "Cleaning up..."
-rm -rf ${DEPLOY_DIR}
+# Cleanup handled by GitHub Actions workflow
+echo "Deployment cleanup will be handled by workflow..."
 
 echo "✅ Deployment complete!"
 echo ""
