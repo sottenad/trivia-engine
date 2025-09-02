@@ -69,20 +69,37 @@ jobs:
           # Copy Marketing built files
           mkdir -p deploy-package/marketing
           
+          # Debug: Check what Next.js build created
+          echo "Checking Next.js build output..."
+          ls -la marketing/.next/ | head -20
+          
           # Check if standalone build exists (from next.config.mjs output: 'standalone')
           if [ -d "marketing/.next/standalone" ]; then
-            echo "Copying Next.js standalone build..."
+            echo "✅ Found Next.js standalone build"
+            echo "Contents of standalone directory:"
+            ls -la marketing/.next/standalone/ | head -10
+            
+            # Copy standalone files to root of marketing deploy folder
+            # This is how Next.js expects standalone to be deployed
             cp -r marketing/.next/standalone/* deploy-package/marketing/
-            # Copy static files separately for standalone
+            
+            # Copy static files and public separately (required for standalone)
             mkdir -p deploy-package/marketing/.next
             cp -r marketing/.next/static deploy-package/marketing/.next/
             cp -r marketing/public deploy-package/marketing/ 2>/dev/null || true
+            
+            echo "Verifying standalone deployment structure:"
+            ls -la deploy-package/marketing/ | head -10
+            echo "Checking for server.js:"
+            find deploy-package/marketing -name "server.js" -type f | head -5
           else
-            echo "Copying standard Next.js build with dependencies..."
+            echo "⚠️ WARNING: No standalone build found! Check next.config.mjs"
+            echo "Falling back to standard build (requires node_modules)..."
             cp -r marketing/.next deploy-package/marketing/
             cp -r marketing/public deploy-package/marketing/ 2>/dev/null || true
             cp marketing/package*.json deploy-package/marketing/
-            # Install production dependencies for marketing
+            # This will likely fail on low-memory server
+            echo "Installing production dependencies (may fail on 1GB server)..."
             cd marketing
             npm ci --production --prefix ../deploy-package/marketing
             cd ..

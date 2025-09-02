@@ -15,14 +15,26 @@ PRODUCTION_DIR="/home/trivia/trivia-engine"
 # Ensure production directory exists
 mkdir -p ${PRODUCTION_DIR}
 
-# Stop and delete services to prevent port conflicts
-echo "Stopping and cleaning up services..."
-pm2 stop api 2>/dev/null || true
-pm2 delete api 2>/dev/null || true
-pm2 stop marketing 2>/dev/null || true
-pm2 delete marketing 2>/dev/null || true
-# Give processes time to fully stop
-sleep 2
+# Clean PM2 completely to avoid port conflicts
+echo "Cleaning up PM2 services..."
+# First try graceful stop and delete
+pm2 stop all 2>/dev/null || true
+pm2 delete all 2>/dev/null || true
+
+# Check if port 3003 is still in use
+if lsof -Pi :3003 -sTCP:LISTEN -t >/dev/null 2>&1; then
+    echo "Port 3003 still in use, killing PM2 daemon..."
+    pm2 kill
+    # Restart PM2 daemon
+    pm2 start
+    sleep 2
+fi
+
+# Also check port 3000
+if lsof -Pi :3000 -sTCP:LISTEN -t >/dev/null 2>&1; then
+    echo "Port 3000 still in use, checking process..."
+    lsof -i :3000
+fi
 
 # Backup current deployment (optional)
 if [ -d "${PRODUCTION_DIR}/app" ]; then
@@ -92,24 +104,51 @@ pm2 start api/index.js --name api \
 # Start Marketing site
 cd ${PRODUCTION_DIR}/marketing
 
-# Check if standalone build exists
+# Debug: Show what files exist
+echo "Checking marketing directory structure..."
+echo "Contents of ${PRODUCTION_DIR}/marketing:"
+ls -la ${PRODUCTION_DIR}/marketing/ | head -20
+echo "Contents of ${PRODUCTION_DIR}/marketing/.next (if exists):"
+ls -la ${PRODUCTION_DIR}/marketing/.next/ 2>/dev/null | head -10 || echo "No .next directory"
+echo "Looking for standalone builds:"
+find ${PRODUCTION_DIR}/marketing -name "server.js" -type f 2>/dev/null | head -5
+
+# Check if standalone build exists (Next.js standalone creates a server.js in root when copied)
 if [ -f "${PRODUCTION_DIR}/marketing/server.js" ]; then
-    echo "Starting standalone Next.js server from marketing/server.js..."
-    PORT=3000 pm2 start server.js --name marketing \
+    echo "✅ Found standalone server at: ${PRODUCTION_DIR}/marketing/server.js"
+    echo "Starting standalone Next.js server..."
+    cd ${PRODUCTION_DIR}/marketing
+    # Use node directly to avoid PM2 env issues
+    PORT=3000 pm2 start "node server.js" --name marketing \
         --max-memory-restart 512M \
         --log /var/log/pm2/marketing.log
-elif [ -f "${PRODUCTION_DIR}/marketing/.next/standalone/server.js" ]; then
-    echo "Starting Next.js standalone from .next/standalone/server.js..."
-    PORT=3000 pm2 start .next/standalone/server.js --name marketing \
-        --max-memory-restart 512M \
-        --log /var/log/pm2/marketing.log
+elif [ -d "${PRODUCTION_DIR}/marketing/.next/standalone" ]; then
+    echo "✅ Found .next/standalone directory"
+    # The standalone build should have been copied to root, but check if it's still in .next
+    if [ -f "${PRODUCTION_DIR}/marketing/.next/standalone/server.js" ]; then
+        echo "Starting from .next/standalone/server.js"
+        cd ${PRODUCTION_DIR}/marketing/.next/standalone
+        PORT=3000 pm2 start "node server.js" --name marketing \
+            --max-memory-restart 512M \
+            --log /var/log/pm2/marketing.log
+    else
+        echo "ERROR: Standalone directory exists but no server.js found!"
+        ls -la ${PRODUCTION_DIR}/marketing/.next/standalone/
+    fi
 else
-    echo "WARNING: No standalone build found, falling back to npm start..."
-    echo "This requires node_modules which may not be present!"
-    pm2 start npm --name marketing \
-        --max-memory-restart 512M \
-        --log /var/log/pm2/marketing.log \
-        -- start
+    echo "❌ ERROR: No standalone build found!"
+    echo "The deployment should include a standalone Next.js build."
+    echo "Checking for node_modules as last resort..."
+    if [ -d "${PRODUCTION_DIR}/marketing/node_modules" ]; then
+        echo "Found node_modules, attempting npm start..."
+        pm2 start npm --name marketing \
+            --max-memory-restart 512M \
+            --log /var/log/pm2/marketing.log \
+            -- start
+    else
+        echo "FATAL: No standalone build and no node_modules. Marketing site cannot start!"
+        echo "Deployment packaging may have failed."
+    fi
 fi
 
 # Save PM2 configuration
