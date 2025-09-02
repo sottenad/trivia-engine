@@ -68,9 +68,25 @@ jobs:
           
           # Copy Marketing built files
           mkdir -p deploy-package/marketing
-          cp -r marketing/.next deploy-package/marketing/
-          cp -r marketing/public deploy-package/marketing/ 2>/dev/null || true
-          cp marketing/package*.json deploy-package/marketing/
+          
+          # Check if standalone build exists (from next.config.mjs output: 'standalone')
+          if [ -d "marketing/.next/standalone" ]; then
+            echo "Copying Next.js standalone build..."
+            cp -r marketing/.next/standalone/* deploy-package/marketing/
+            # Copy static files separately for standalone
+            mkdir -p deploy-package/marketing/.next
+            cp -r marketing/.next/static deploy-package/marketing/.next/
+            cp -r marketing/public deploy-package/marketing/ 2>/dev/null || true
+          else
+            echo "Copying standard Next.js build with dependencies..."
+            cp -r marketing/.next deploy-package/marketing/
+            cp -r marketing/public deploy-package/marketing/ 2>/dev/null || true
+            cp marketing/package*.json deploy-package/marketing/
+            # Install production dependencies for marketing
+            cd marketing
+            npm ci --production --prefix ../deploy-package/marketing
+            cd ..
+          fi
           
           # Copy deployment script
           cp scripts/deploy-remote.sh deploy-package/ 2>/dev/null || true
@@ -96,9 +112,13 @@ jobs:
                 deploy-package/ \
                 ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }}:/home/trivia/trivia-engine-deploy/
           
-          # Run deployment script on server
+          # Run deployment script on server with environment variables
           ssh -i ~/.ssh/deploy_key ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} \
-            "cd /home/trivia/trivia-engine-deploy && bash deploy-remote.sh"
+            "cd /home/trivia/trivia-engine-deploy && \
+             export DATABASE_URL='${{ secrets.DATABASE_URL }}' && \
+             export JWT_SECRET='${{ secrets.JWT_SECRET }}' && \
+             export PORT=3003 && \
+             bash deploy-remote.sh"
 
       # Run database migrations
       - name: Run database migrations

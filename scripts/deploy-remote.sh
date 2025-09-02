@@ -30,24 +30,44 @@ echo "Deploying API..."
 rm -rf ${PRODUCTION_DIR}/app
 cp -r ${DEPLOY_DIR}/app ${PRODUCTION_DIR}/
 
-# Ensure .env file exists (should be manually configured on server)
-if [ ! -f "${PRODUCTION_DIR}/app/.env" ]; then
-    echo "WARNING: No .env file found in ${PRODUCTION_DIR}/app/"
-    echo "Please configure environment variables!"
-fi
+# Create .env file from environment variables passed by GitHub Actions
+echo "Creating .env file..."
+cat > ${PRODUCTION_DIR}/app/.env << EOF
+DATABASE_URL=${DATABASE_URL}
+JWT_SECRET=${JWT_SECRET}
+PORT=${PORT:-3003}
+NODE_ENV=production
+EOF
+
+echo "✅ Environment variables configured"
 
 # Deploy Marketing site
 echo "Deploying Marketing site..."
 rm -rf ${PRODUCTION_DIR}/marketing/.next
+rm -rf ${PRODUCTION_DIR}/marketing/.next.backup
 rm -rf ${PRODUCTION_DIR}/marketing/public
+rm -rf ${PRODUCTION_DIR}/marketing/node_modules
 mkdir -p ${PRODUCTION_DIR}/marketing
+
+# Copy all marketing files including pre-built dependencies
 cp -r ${DEPLOY_DIR}/marketing/.next ${PRODUCTION_DIR}/marketing/
 cp -r ${DEPLOY_DIR}/marketing/public ${PRODUCTION_DIR}/marketing/ 2>/dev/null || true
 cp ${DEPLOY_DIR}/marketing/package*.json ${PRODUCTION_DIR}/marketing/
 
-# Install marketing production dependencies
-cd ${PRODUCTION_DIR}/marketing
-npm ci --production
+# Copy node_modules if included (for standalone or pre-installed deps)
+if [ -d "${DEPLOY_DIR}/marketing/node_modules" ]; then
+    echo "Copying pre-installed node_modules..."
+    cp -r ${DEPLOY_DIR}/marketing/node_modules ${PRODUCTION_DIR}/marketing/
+elif [ -d "${DEPLOY_DIR}/marketing/.next/standalone" ]; then
+    echo "Using Next.js standalone build (self-contained)..."
+    cp -r ${DEPLOY_DIR}/marketing/.next/standalone/* ${PRODUCTION_DIR}/marketing/
+    # Copy static files for standalone
+    mkdir -p ${PRODUCTION_DIR}/marketing/.next/static
+    cp -r ${DEPLOY_DIR}/marketing/.next/static ${PRODUCTION_DIR}/marketing/.next/
+else
+    echo "WARNING: No node_modules or standalone build found"
+    echo "Marketing site may not start properly"
+fi
 
 # Generate Prisma client in production
 cd ${PRODUCTION_DIR}/app
@@ -70,15 +90,27 @@ pm2 delete marketing 2>/dev/null || true
 cd ${PRODUCTION_DIR}/marketing
 
 # Check if standalone build exists
-if [ -f ".next/standalone/server.js" ]; then
+if [ -f "${PRODUCTION_DIR}/marketing/server.js" ]; then
     echo "Starting standalone Next.js server..."
-    pm2 start .next/standalone/server.js --name marketing \
+    cd ${PRODUCTION_DIR}/marketing
+    PORT=3000 pm2 start server.js --name marketing \
         --env production \
         --max-memory-restart 512M \
         --error /var/log/pm2/marketing-error.log \
-        --output /var/log/pm2/marketing-out.log
+        --output /var/log/pm2/marketing-out.log \
+        -- --port 3000
+elif [ -f "${PRODUCTION_DIR}/marketing/.next/standalone/server.js" ]; then
+    echo "Starting Next.js standalone from .next/standalone..."
+    cd ${PRODUCTION_DIR}/marketing
+    PORT=3000 pm2 start .next/standalone/server.js --name marketing \
+        --env production \
+        --max-memory-restart 512M \
+        --error /var/log/pm2/marketing-error.log \
+        --output /var/log/pm2/marketing-out.log \
+        -- --port 3000
 else
-    echo "Starting Next.js with npm start..."
+    echo "Starting Next.js with npm start (fallback)..."
+    cd ${PRODUCTION_DIR}/marketing
     pm2 start npm --name marketing -- start \
         --max-memory-restart 512M \
         --error /var/log/pm2/marketing-error.log \
