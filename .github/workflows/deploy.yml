@@ -150,7 +150,7 @@ jobs:
       - name: Restart PM2 services
         run: |
           ssh -i ~/.ssh/deploy_key ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} \
-            "pm2 restart api marketing && pm2 save"
+            "pm2 restart api && pm2 save"
 
       # Health check
       - name: Health check
