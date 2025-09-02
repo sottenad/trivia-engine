@@ -15,9 +15,14 @@ PRODUCTION_DIR="/home/trivia/trivia-engine"
 # Ensure production directory exists
 mkdir -p ${PRODUCTION_DIR}
 
-# Stop services to prevent file locks
-echo "Stopping services..."
-pm2 stop api marketing 2>/dev/null || true
+# Stop and delete services to prevent port conflicts
+echo "Stopping and cleaning up services..."
+pm2 stop api 2>/dev/null || true
+pm2 delete api 2>/dev/null || true
+pm2 stop marketing 2>/dev/null || true
+pm2 delete marketing 2>/dev/null || true
+# Give processes time to fully stop
+sleep 2
 
 # Backup current deployment (optional)
 if [ -d "${PRODUCTION_DIR}/app" ]; then
@@ -79,43 +84,32 @@ echo "Starting services..."
 cd ${PRODUCTION_DIR}
 
 # Start API
-pm2 delete api 2>/dev/null || true
 cd ${PRODUCTION_DIR}/app
-pm2 start api/index.js --name api --env production \
+pm2 start api/index.js --name api \
     --max-memory-restart 512M \
-    --error /var/log/pm2/api-error.log \
-    --output /var/log/pm2/api-out.log
+    --log /var/log/pm2/api.log
 
 # Start Marketing site
-pm2 delete marketing 2>/dev/null || true
 cd ${PRODUCTION_DIR}/marketing
 
 # Check if standalone build exists
 if [ -f "${PRODUCTION_DIR}/marketing/server.js" ]; then
-    echo "Starting standalone Next.js server..."
-    cd ${PRODUCTION_DIR}/marketing
+    echo "Starting standalone Next.js server from marketing/server.js..."
     PORT=3000 pm2 start server.js --name marketing \
-        --env production \
         --max-memory-restart 512M \
-        --error /var/log/pm2/marketing-error.log \
-        --output /var/log/pm2/marketing-out.log \
-        -- --port 3000
+        --log /var/log/pm2/marketing.log
 elif [ -f "${PRODUCTION_DIR}/marketing/.next/standalone/server.js" ]; then
-    echo "Starting Next.js standalone from .next/standalone..."
-    cd ${PRODUCTION_DIR}/marketing
+    echo "Starting Next.js standalone from .next/standalone/server.js..."
     PORT=3000 pm2 start .next/standalone/server.js --name marketing \
-        --env production \
         --max-memory-restart 512M \
-        --error /var/log/pm2/marketing-error.log \
-        --output /var/log/pm2/marketing-out.log \
-        -- --port 3000
+        --log /var/log/pm2/marketing.log
 else
-    echo "Starting Next.js with npm start (fallback)..."
-    cd ${PRODUCTION_DIR}/marketing
-    pm2 start npm --name marketing -- start \
+    echo "WARNING: No standalone build found, falling back to npm start..."
+    echo "This requires node_modules which may not be present!"
+    pm2 start npm --name marketing \
         --max-memory-restart 512M \
-        --error /var/log/pm2/marketing-error.log \
-        --output /var/log/pm2/marketing-out.log
+        --log /var/log/pm2/marketing.log \
+        -- start
 fi
 
 # Save PM2 configuration
