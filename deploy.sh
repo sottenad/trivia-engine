@@ -8,10 +8,10 @@ set -e  # Exit on error
 # ========================================
 # CONFIGURATION - EDIT THESE VALUES
 # ========================================
-DOMAIN="yourdomain.com"                    # Your main domain
+DOMAIN="trivia-engine.com"                    # Your main domain
 API_SUBDOMAIN="api.${DOMAIN}"             # API subdomain
 WWW_DOMAIN="www.${DOMAIN}"                # WWW subdomain
-EMAIL="your-email@example.com"            # Email for Let's Encrypt
+EMAIL="sottenad@exgmailample.com"            # Email for Let's Encrypt
 API_PORT=3003                              # Internal API port
 MARKETING_PORT=3000                        # Internal marketing site port
 
