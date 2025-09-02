@@ -1,0 +1,143 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: # Allow manual triggers
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: |
+            app/package-lock.json
+            marketing/package-lock.json
+
+      # Build API
+      - name: Install API dependencies
+        working-directory: ./app
+        run: npm ci --production
+
+      - name: Generate Prisma Client
+        working-directory: ./app
+        run: npx prisma generate
+
+      # Build Marketing Site
+      - name: Install Marketing dependencies
+        working-directory: ./marketing
+        run: npm ci
+
+      - name: Build Marketing site
+        working-directory: ./marketing
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      # Prepare deployment package
+      - name: Prepare deployment artifacts
+        run: |
+          # Create deployment directory
+          mkdir -p deploy-package
+          
+          # Copy API files (excluding node_modules)
+          rsync -av --exclude='node_modules' \
+                    --exclude='.env' \
+                    --exclude='*.log' \
+                    app/ deploy-package/app/
+          
+          # Copy only production dependencies for API
+          cd app
+          npm ci --production --prefix ../deploy-package/app
+          cd ..
+          
+          # Copy Prisma files for migrations
+          cp -r app/prisma deploy-package/app/
+          
+          # Copy Marketing built files
+          mkdir -p deploy-package/marketing
+          cp -r marketing/.next deploy-package/marketing/
+          cp -r marketing/public deploy-package/marketing/ 2>/dev/null || true
+          cp marketing/package*.json deploy-package/marketing/
+          
+          # Copy deployment script
+          cp scripts/deploy-remote.sh deploy-package/ 2>/dev/null || true
+
+      # Setup SSH
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DO_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.DO_HOST }} >> ~/.ssh/known_hosts
+
+      # Deploy to server
+      - name: Deploy to Digital Ocean
+        run: |
+          # Create deployment directory on server
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} \
+            "mkdir -p /home/trivia/trivia-engine-deploy"
+          
+          # Copy files to server
+          rsync -avz --delete \
+                -e "ssh -i ~/.ssh/deploy_key" \
+                deploy-package/ \
+                ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }}:/home/trivia/trivia-engine-deploy/
+          
+          # Run deployment script on server
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} \
+            "cd /home/trivia/trivia-engine-deploy && bash deploy-remote.sh"
+
+      # Run database migrations
+      - name: Run database migrations
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} \
+            "cd /home/trivia/trivia-engine/app && \
+             export DATABASE_URL='${{ secrets.DATABASE_URL }}' && \
+             npx prisma migrate deploy"
+
+      # Restart services
+      - name: Restart PM2 services
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} \
+            "pm2 restart api marketing && pm2 save"
+
+      # Health check
+      - name: Health check
+        run: |
+          sleep 10
+          # Check API health
+          curl -f https://api.trivia-engine.com/health || exit 1
+          # Check marketing site
+          curl -f https://trivia-engine.com || exit 1
+
+      # Cleanup
+      - name: Cleanup SSH
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
+  notify:
+    needs: build-and-deploy
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Notify deployment status
+        run: |
+          if [ "${{ needs.build-and-deploy.result }}" == "success" ]; then
+            echo "✅ Deployment successful!"
+          else
+            echo "❌ Deployment failed!"
+          fi

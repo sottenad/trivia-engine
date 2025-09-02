@@ -137,11 +137,49 @@ pm2 start api/index.js --name api --env production
 echo "Deploying Marketing site..."
 cd ../marketing
 npm install
-npm run build
+
+# Check if we should build or use pre-built files
+if [ "$1" == "--skip-build" ]; then
+    echo "Skipping Next.js build (using pre-built files)..."
+elif [ -d ".next" ] && [ "$1" == "--use-existing" ]; then
+    echo "Using existing .next build directory..."
+else
+    echo "Building Next.js app (this may take a while on low-memory servers)..."
+    # Set memory limit for Node.js build process
+    export NODE_OPTIONS="--max-old-space-size=768"
+    
+    # Build with retries in case of memory issues
+    for i in 1 2 3; do
+        echo "Build attempt $i of 3..."
+        if npm run build; then
+            echo "Build successful!"
+            break
+        else
+            if [ $i -eq 3 ]; then
+                echo -e "${RED}Build failed after 3 attempts${NC}"
+                echo -e "${YELLOW}Consider:${NC}"
+                echo "  1. Running: sudo swapon -s (to check swap is enabled)"
+                echo "  2. Building locally and using: ./deploy.sh --skip-build"
+                echo "  3. Increasing droplet size temporarily for deployment"
+                exit 1
+            fi
+            echo "Build failed, retrying in 5 seconds..."
+            sleep 5
+        fi
+    done
+fi
 
 # Start/restart Marketing site with PM2
 pm2 delete marketing 2>/dev/null || true
-pm2 start npm --name marketing -- start
+
+# For standalone build, use the standalone server
+if [ -f ".next/standalone/server.js" ]; then
+    echo "Starting standalone Next.js server..."
+    pm2 start .next/standalone/server.js --name marketing --env production
+else
+    echo "Starting Next.js with npm start..."
+    pm2 start npm --name marketing -- start
+fi
 
 # Save PM2 configuration
 pm2 save
