@@ -93,16 +93,31 @@ jobs:
             echo "Checking for server.js:"
             find deploy-package/marketing -name "server.js" -type f | head -5
           else
-            echo "⚠️ WARNING: No standalone build found! Check next.config.mjs"
-            echo "Falling back to standard build (requires node_modules)..."
+            echo "⚠️ WARNING: No standalone build found!"
+            echo "Next.js 15 may have issues with standalone mode."
+            echo "Using full build with production dependencies..."
+            
+            # Copy full Next.js build
             cp -r marketing/.next deploy-package/marketing/
             cp -r marketing/public deploy-package/marketing/ 2>/dev/null || true
             cp marketing/package*.json deploy-package/marketing/
-            # This will likely fail on low-memory server
-            echo "Installing production dependencies (may fail on 1GB server)..."
-            cd marketing
-            npm ci --production --prefix ../deploy-package/marketing
+            
+            # Install ONLY production dependencies locally and copy
+            echo "Installing production dependencies for deployment..."
+            mkdir -p temp-marketing
+            cp marketing/package*.json temp-marketing/
+            cd temp-marketing
+            # Install with --omit=dev for production only
+            npm ci --omit=dev
             cd ..
+            
+            # Copy the production node_modules
+            cp -r temp-marketing/node_modules deploy-package/marketing/
+            rm -rf temp-marketing
+            
+            echo "Deployment package includes node_modules for marketing"
+            echo "Size of marketing deployment:"
+            du -sh deploy-package/marketing/
           fi
           
           # Copy deployment script
