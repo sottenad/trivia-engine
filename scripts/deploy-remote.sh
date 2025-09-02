@@ -164,7 +164,7 @@ sleep 5
 # Check PM2 status
 pm2 list
 
-# Check if services are running
+# Check if API is running
 if pm2 info api | grep -q "online"; then
     echo "✅ API is running"
 else
@@ -173,11 +173,14 @@ else
     exit 1
 fi
 
-if pm2 info marketing | grep -q "online"; then
-    echo "✅ Marketing site is running"
+# Check if marketing static files exist (no PM2 process needed)
+if [ -f "${PRODUCTION_DIR}/marketing/index.html" ]; then
+    echo "✅ Marketing static site is deployed"
+    echo "   Static files are served by nginx at: ${PRODUCTION_DIR}/marketing/"
 else
-    echo "❌ Marketing site failed to start"
-    pm2 logs marketing --lines 20
+    echo "❌ Marketing static files not found"
+    echo "   Expected index.html at: ${PRODUCTION_DIR}/marketing/index.html"
+    ls -la ${PRODUCTION_DIR}/marketing/
     exit 1
 fi
 
