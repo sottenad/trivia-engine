@@ -67,31 +67,18 @@ echo "✅ Environment variables configured"
 
 # Deploy Marketing site
 echo "Deploying Marketing site..."
-rm -rf ${PRODUCTION_DIR}/marketing/.next
-rm -rf ${PRODUCTION_DIR}/marketing/.next.backup
-rm -rf ${PRODUCTION_DIR}/marketing/public
-rm -rf ${PRODUCTION_DIR}/marketing/node_modules
+# Clean up old marketing directory completely
+rm -rf ${PRODUCTION_DIR}/marketing
 mkdir -p ${PRODUCTION_DIR}/marketing
 
-# Copy all marketing files including pre-built dependencies
-cp -r ${DEPLOY_DIR}/marketing/.next ${PRODUCTION_DIR}/marketing/
-cp -r ${DEPLOY_DIR}/marketing/public ${PRODUCTION_DIR}/marketing/ 2>/dev/null || true
-cp ${DEPLOY_DIR}/marketing/package*.json ${PRODUCTION_DIR}/marketing/
+# Copy ALL files from deploy-package/marketing (should be static export files)
+echo "Copying marketing files from deploy package..."
+cp -r ${DEPLOY_DIR}/marketing/* ${PRODUCTION_DIR}/marketing/ 2>/dev/null || true
+cp -r ${DEPLOY_DIR}/marketing/.[^.]* ${PRODUCTION_DIR}/marketing/ 2>/dev/null || true
 
-# Copy node_modules if included (for standalone or pre-installed deps)
-if [ -d "${DEPLOY_DIR}/marketing/node_modules" ]; then
-    echo "Copying pre-installed node_modules..."
-    cp -r ${DEPLOY_DIR}/marketing/node_modules ${PRODUCTION_DIR}/marketing/
-elif [ -d "${DEPLOY_DIR}/marketing/.next/standalone" ]; then
-    echo "Using Next.js standalone build (self-contained)..."
-    cp -r ${DEPLOY_DIR}/marketing/.next/standalone/* ${PRODUCTION_DIR}/marketing/
-    # Copy static files for standalone
-    mkdir -p ${PRODUCTION_DIR}/marketing/.next/static
-    cp -r ${DEPLOY_DIR}/marketing/.next/static ${PRODUCTION_DIR}/marketing/.next/
-else
-    echo "WARNING: No node_modules or standalone build found"
-    echo "Marketing site may not start properly"
-fi
+# Show what was deployed
+echo "Deployed marketing files:"
+ls -la ${PRODUCTION_DIR}/marketing/ | head -20
 
 # Generate Prisma client in production
 cd ${PRODUCTION_DIR}/app
