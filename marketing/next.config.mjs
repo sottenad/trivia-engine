@@ -7,7 +7,7 @@ const nextConfig = {
   productionBrowserSourceMaps: false,
   
   // For static export with client-side routing
-  trailingSlash: true,
+  trailingSlash: true, 
 };
 
 export default nextConfig;
