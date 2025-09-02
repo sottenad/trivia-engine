@@ -48,9 +48,13 @@ else
     echo -e "${GREEN}✓ Certbot is already installed${NC}"
 fi
 
-# Pull latest code
+# Pull latest code (stash local changes first to preserve configuration)
 echo "Pulling latest code..."
+echo "Stashing local changes..."
+git stash push -m "Local deploy configuration"
 git pull origin main
+echo "Reapplying local configuration..."
+git stash pop || echo "No stashed changes to apply or conflicts occurred (this is usually fine)"
 
 # ========================================
 # NGINX CONFIGURATION
