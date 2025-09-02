@@ -115,43 +115,52 @@ pm2 start api/index.js --name api \
     --log /var/log/pm2/api.log \
     || echo "Failed to start API, check logs"
 
-# Deploy Marketing site (static files)
+# Deploy Marketing site
 echo "Checking marketing site deployment..."
 cd ${PRODUCTION_DIR}/marketing
 
-# Check if this is a static export
+# Debug: Show what's in the marketing directory
+echo "Contents of marketing directory:"
+ls -la ${PRODUCTION_DIR}/marketing/ | head -20
+
+# IMPORTANT: Check for static export FIRST (index.html in root)
 if [ -f "${PRODUCTION_DIR}/marketing/index.html" ]; then
     echo "✅ Marketing site is a static export"
     echo "Files will be served directly by nginx - no Node.js process needed"
-    echo "Contents of marketing directory:"
-    ls -la ${PRODUCTION_DIR}/marketing/ | head -20
     
     # No PM2 process needed for static files
-    # Just ensure nginx is configured to serve from this directory
     echo "Static files ready at: ${PRODUCTION_DIR}/marketing/"
     
     # Stop any existing marketing PM2 process since we don't need it
     pm2 delete marketing 2>/dev/null || true
     echo "Removed PM2 marketing process (not needed for static site)"
     
-elif [ -f "${PRODUCTION_DIR}/marketing/server.js" ] || [ -d "${PRODUCTION_DIR}/marketing/.next" ]; then
-    echo "Marketing site requires Node.js server (not static export)"
-    echo "Starting with PM2..."
+    # Ensure nginx can serve the files
+    echo "Static site will be served by nginx from: ${PRODUCTION_DIR}/marketing/"
     
-    # Fallback to server mode if needed
+# Only check for Node.js mode if NO static files found
+elif [ ! -f "${PRODUCTION_DIR}/marketing/index.html" ]; then
+    echo "No index.html found, checking for Node.js server mode..."
+    
     if [ -f "${PRODUCTION_DIR}/marketing/server.js" ]; then
+        echo "Found server.js, starting with PM2..."
         PORT=3000 pm2 start server.js --name marketing \
             --max-memory-restart 512M \
             --log /var/log/pm2/marketing.log
-    else
-        # Try npm start as last resort
+    elif [ -d "${PRODUCTION_DIR}/marketing/.next" ] && [ -d "${PRODUCTION_DIR}/marketing/node_modules" ]; then
+        echo "Found .next directory and node_modules, trying npm start..."
         pm2 start npm --name marketing \
             --max-memory-restart 512M \
             --log /var/log/pm2/marketing.log \
             -- start
+    else
+        echo "ERROR: No static files (index.html) and no valid Node.js setup found!"
+        echo "Found these files:"
+        ls -la ${PRODUCTION_DIR}/marketing/
+        echo "The deployment may have failed or the build output is missing."
     fi
 else
-    echo "ERROR: No valid marketing site files found!"
+    echo "ERROR: Unexpected state in marketing deployment"
     ls -la ${PRODUCTION_DIR}/marketing/
 fi
 
